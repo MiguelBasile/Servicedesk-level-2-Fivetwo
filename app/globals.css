@@ -67,6 +67,7 @@ a {
 }
 
 .signout-link,
+.alert-motion-button,
 .access-action {
   min-height: 42px;
   padding: 10px 16px;
@@ -76,16 +77,28 @@ a {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--line);
   border-radius: 8px;
+  color: var(--ink);
   font-weight: 850;
   text-decoration: none;
 }
 
 .signout-link:hover,
 .signout-link:focus-visible,
+.alert-motion-button:hover,
+.alert-motion-button:focus-visible,
 .access-action:hover,
 .access-action:focus-visible {
   border-color: rgba(65, 214, 189, 0.72);
   outline: 3px solid rgba(65, 214, 189, 0.18);
+}
+
+.alert-motion-button {
+  cursor: pointer;
+}
+
+.alert-motion-button[aria-pressed="true"] {
+  border-color: rgba(247, 243, 234, 0.42);
+  background: rgba(247, 243, 234, 0.16);
 }
 
 .eyebrow {
@@ -442,6 +455,19 @@ h1 {
   background: rgba(242, 79, 100, 0.18);
   color: #ffa3ae;
   border-color: rgba(242, 79, 100, 0.52);
+}
+
+.dashboard.is-flash-paused.state-major,
+.dashboard.is-flash-paused.state-sla {
+  animation: none;
+}
+
+.dashboard.is-flash-paused.state-major {
+  background: #b2183a;
+}
+
+.dashboard.is-flash-paused.state-sla {
+  background: #b35c05;
 }
 
 @keyframes majorFlash {

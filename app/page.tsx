@@ -76,6 +76,8 @@ const emptyOverview: Overview = {
   slaWatch: []
 };
 
+const alertFlashStorageKey = "service-desk-alert-flash-paused";
+
 export default function DashboardPage() {
   const [timeLabel, setTimeLabel] = useState("--:--");
   const [dateLabel, setDateLabel] = useState("--");
@@ -85,9 +87,11 @@ export default function DashboardPage() {
   const [connectionMessage, setConnectionMessage] = useState<string | undefined>();
   const [sessionStatus, setSessionStatus] = useState<SessionStatus>("checking");
   const [session, setSession] = useState<SessionPayload | undefined>();
+  const [flashPaused, setFlashPaused] = useState(false);
 
   const dashboardState = getAlertState(overview.metrics);
   const statusCopy = getStatusCopy(overview.metrics);
+  const isAlertState = dashboardState !== "normal";
 
   const loadOverview = useCallback(async () => {
     try {
@@ -144,6 +148,14 @@ export default function DashboardPage() {
     const timer = window.setInterval(updateClock, 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    setFlashPaused(window.localStorage.getItem(alertFlashStorageKey) === "true");
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(alertFlashStorageKey, String(flashPaused));
+  }, [flashPaused]);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,13 +218,23 @@ export default function DashboardPage() {
   const scopeLabel = session?.scope?.displayName || overview.scope?.displayName || "Not connected";
 
   return (
-    <main className={`dashboard state-${dashboardState}`}>
+    <main className={`dashboard state-${dashboardState} ${flashPaused ? "is-flash-paused" : ""}`}>
       <header className="topbar">
         <div>
           <p className="eyebrow">Service Desk Level 2</p>
           <h1>Service Health Dashboard</h1>
         </div>
         <div className="topbar-actions">
+          {isAlertState ? (
+            <button
+              aria-pressed={flashPaused}
+              className="alert-motion-button"
+              type="button"
+              onClick={() => setFlashPaused((paused) => !paused)}
+            >
+              {flashPaused ? "Resume flash" : "Pause flash"}
+            </button>
+          ) : null}
           <a className="signout-link" href="/logout">
             Sign out
           </a>
