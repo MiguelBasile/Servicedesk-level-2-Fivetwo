@@ -7,6 +7,11 @@ type EntraTokenCache = {
   expiresAt: number;
 };
 
+type AdoFieldCache = {
+  referenceNames: Set<string>;
+  expiresAt: number;
+};
+
 type ClientPrincipal = {
   identityProvider?: string;
   userId?: string;
@@ -121,6 +126,7 @@ const baseFields = [
 ];
 
 let entraTokenCache: EntraTokenCache | undefined;
+let adoFieldCache: AdoFieldCache | undefined;
 
 export class AuthError extends Error {
   status: number;
@@ -287,15 +293,18 @@ export function resolveDashboardScope(
 export async function getAdoConnectionStatus() {
   const org = requireEnv("ADO_ORG");
   const project = requireEnv("ADO_PROJECT");
-  const fieldsResponse = await adoFetch("wit/fields?api-version=7.1");
+  const fieldReferenceNames = await getAdoFieldReferenceNames();
+  const customerField = getCustomerField();
 
   return {
     connected: true,
     org,
     project,
     authMode: getAdoAuthMode(),
-    customerField: getCustomerField(),
-    availableFieldCount: Array.isArray(fieldsResponse.value) ? fieldsResponse.value.length : 0
+    customerField,
+    customerFieldAvailable: fieldReferenceNames.has(customerField),
+    slaFieldAvailable: fieldReferenceNames.has("Custom.SlaDueDate") || fieldReferenceNames.has("Microsoft.VSTS.Scheduling.DueDate"),
+    availableFieldCount: fieldReferenceNames.size
   };
 }
 
@@ -459,7 +468,19 @@ function isUserCustomerMapConfigured(env: Record<string, string | undefined> = p
 async function getDashboardWorkItems(scope: DashboardScope): Promise<AdoWorkItem[]> {
   const workItemTypes = getConfiguredWorkItemTypes();
   const monthStart = getMonthStartIso();
-  const scopeClause = scope.customerId ? `AND [${getCustomerField()}] = '${escapeWiql(scope.customerId)}'` : "";
+  const customerField = getCustomerField();
+  const availableFields = await getAdoFieldReferenceNames();
+
+  if (scope.customerId && !availableFields.has(customerField)) {
+    throw new AdoRequestError(
+      `Configured customer field is not available: ${customerField}`,
+      500,
+      "configuration",
+      `ADO_CUSTOMER_FIELD is set to ${customerField}, but that field was not found in Azure DevOps. Check the field reference name.`
+    );
+  }
+
+  const scopeClause = scope.customerId ? `AND [${customerField}] = '${escapeWiql(scope.customerId)}'` : "";
   const wiql = {
     query: `
       SELECT [System.Id]
@@ -481,7 +502,7 @@ async function getDashboardWorkItems(scope: DashboardScope): Promise<AdoWorkItem
   const ids = (result.workItems ?? []).map((item: { id: number }) => item.id).slice(0, 200);
   if (ids.length === 0) return [];
 
-  const fields = uniqueFields([...baseFields, getCustomerField()]);
+  const fields = uniqueFields([...baseFields, customerField]).filter((field) => availableFields.has(field));
   const response = await adoFetch(`wit/workitems?ids=${ids.join(",")}&fields=${fields.map(encodeURIComponent).join(",")}&api-version=7.1`);
   return response.value ?? [];
 }
@@ -776,6 +797,29 @@ function getConfiguredWorkItemTypes(): string[] {
 
 function getCustomerField(): string {
   return process.env.ADO_CUSTOMER_FIELD || "Custom.Customer";
+}
+
+async function getAdoFieldReferenceNames(): Promise<Set<string>> {
+  const now = Date.now();
+  if (adoFieldCache && adoFieldCache.expiresAt > now) {
+    return adoFieldCache.referenceNames;
+  }
+
+  const fieldsResponse = (await adoFetch("wit/fields?api-version=7.1")) as {
+    value?: Array<{ referenceName?: string }>;
+  };
+  const referenceNames = new Set(
+    (fieldsResponse.value ?? [])
+      .map((field) => field.referenceName)
+      .filter((field): field is string => Boolean(field))
+  );
+
+  adoFieldCache = {
+    referenceNames,
+    expiresAt: now + 5 * 60 * 1000
+  };
+
+  return referenceNames;
 }
 
 function getAdoOperation(path: string): string {
