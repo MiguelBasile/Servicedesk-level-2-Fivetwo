@@ -50,6 +50,7 @@ These are the production lessons from the earlier customer dashboard that were r
 
 - Use `ALLOWED_USER_UPNS` for dashboard allowlisting.
 - If Static Web Apps returns masked `userDetails` such as `mig*****`, put the SWA `userId` shown on the unauthorized screen in `ALLOWED_USER_IDS`.
+- Preferred production fix: assign users a Static Web Apps role such as `fivetwo-internal` and map that role with `CUSTOMER_ROLE_MAP=fivetwo-internal=FiveTwo Internal`.
 - Functions parse the SWA-provided `x-ms-client-principal` header.
 - Function responses should distinguish:
   - `401`: no signed-in SWA principal
@@ -60,6 +61,7 @@ These are the production lessons from the earlier customer dashboard that were r
 
 - Use `USER_CUSTOMER_MAP` to map signed-in UPNs to ADO customer scopes.
 - The left side of `USER_CUSTOMER_MAP` can be a UPN/email or an SWA `userId`.
+- `CUSTOMER_ROLE_MAP` can map SWA roles to ADO customer scopes without relying on `userDetails`.
 - The mapped value must exactly match the ADO customer field value.
 - For this environment the known value is `FiveTwo Internal`.
 - The old pasted customer-token flow should not be used for production.

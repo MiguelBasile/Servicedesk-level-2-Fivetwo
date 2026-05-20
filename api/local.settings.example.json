@@ -14,7 +14,9 @@
     "ADO_WORK_ITEM_TYPES": "Incident,Major Incident,Service Request,Operational Task,Task,User Story,Feature,Epic,Bug,Issue",
     "ALLOWED_USER_UPNS": "miguel.basile@fivetwo.nz,janicebasile@fivetwo.nz",
     "ALLOWED_USER_IDS": "",
+    "ALLOWED_USER_ROLES": "",
     "USER_CUSTOMER_MAP": "miguel.basile@fivetwo.nz=FiveTwo Internal,janicebasile@fivetwo.nz=FiveTwo Internal",
+    "CUSTOMER_ROLE_MAP": "fivetwo-internal=FiveTwo Internal",
     "LOCAL_DEV_CUSTOMER_ID": "FiveTwo Internal",
     "MOCK_MODE": "true"
   }

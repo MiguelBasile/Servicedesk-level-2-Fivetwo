@@ -6,7 +6,21 @@ function principalHeader(userDetails: string, userId = "user-1") {
     JSON.stringify({
       identityProvider: "aad",
       userId,
-      userDetails
+      userDetails,
+      userRoles: ["anonymous", "authenticated"]
+    })
+  ).toString("base64");
+
+  return new Headers({ "x-ms-client-principal": payload });
+}
+
+function principalHeaderWithRoles(userDetails: string, userRoles: string[], userId = "user-1") {
+  const payload = Buffer.from(
+    JSON.stringify({
+      identityProvider: "aad",
+      userId,
+      userDetails,
+      userRoles
     })
   ).toString("base64");
 
@@ -81,6 +95,17 @@ describe("dashboard auth", () => {
     expect(session.allowed).toBe(true);
     expect(session.user?.userDetails).toBe("mig*****");
     expect(session.user?.userId).toBe("swa-user-123");
+    expect(session.scopeConfigured).toBe(true);
+    expect(session.scope?.displayName).toBe("FiveTwo Internal");
+  });
+
+  it("allows and maps users by Static Web Apps role when user details are masked", () => {
+    const session = getDashboardSession(principalHeaderWithRoles("mig*****", ["anonymous", "authenticated", "fivetwo-internal"]), {
+      CUSTOMER_ROLE_MAP: "fivetwo-internal=FiveTwo Internal"
+    });
+
+    expect(session.allowed).toBe(true);
+    expect(session.user?.roles).toContain("fivetwo-internal");
     expect(session.scopeConfigured).toBe(true);
     expect(session.scope?.displayName).toBe("FiveTwo Internal");
   });

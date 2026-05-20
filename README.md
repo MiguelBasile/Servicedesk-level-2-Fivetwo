@@ -27,13 +27,17 @@ ADO_CUSTOMER_FIELD=Custom.Customer
 ADO_WORK_ITEM_TYPES=Incident,Major Incident,Service Request,Operational Task,Task,User Story,Feature,Epic,Bug,Issue
 ALLOWED_USER_UPNS=miguel.basile@fivetwo.nz,janicebasile@fivetwo.nz
 ALLOWED_USER_IDS=
+ALLOWED_USER_ROLES=
 USER_CUSTOMER_MAP=miguel.basile@fivetwo.nz=FiveTwo Internal,janicebasile@fivetwo.nz=FiveTwo Internal
+CUSTOMER_ROLE_MAP=fivetwo-internal=FiveTwo Internal
 MOCK_MODE=false
 ```
 
 `USER_CUSTOMER_MAP` values must exactly match the Azure DevOps customer field configured by `ADO_CUSTOMER_FIELD`.
 
 If Static Web Apps returns a masked value such as `mig*****` after login, add the displayed SWA user ID to `ALLOWED_USER_IDS` and use the same ID as the key in `USER_CUSTOMER_MAP`. SWA user IDs are stable per Static Web App resource.
+
+Preferred for production: invite users to a Static Web Apps custom role such as `fivetwo-internal`, then set `CUSTOMER_ROLE_MAP=fivetwo-internal=FiveTwo Internal`. Role mapping does not depend on `userDetails`, so it works even when SWA returns a masked provider handle.
 
 For an internal-only aggregate dashboard, set `INTERNAL_DASHBOARD=true`. Leave it unset for customer-facing deployments so every user must resolve to a customer scope.
 
@@ -53,6 +57,7 @@ cd api; npm run build
 - Static Web Apps built-in Entra authentication protects the frontend.
 - `/.auth/*` and `/api/*` are anonymous at the SWA edge.
 - Azure Functions parse `x-ms-client-principal` and enforce `ALLOWED_USER_UPNS` / `ALLOWED_USER_IDS`.
+- `CUSTOMER_ROLE_MAP` maps Static Web Apps roles directly to customer scopes and also allowlists users in those roles.
 - `ALLOWED_USER_IDS` may contain SWA user IDs when the provider returns masked user details.
 - Customer scope is resolved from `USER_CUSTOMER_MAP`; the map key may also be an email/UPN or SWA user ID.
 - ADO tokens, client secrets, raw work item fields, assignee emails, and internal notes are never sent to the browser.

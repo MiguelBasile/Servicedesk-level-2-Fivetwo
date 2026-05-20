@@ -47,6 +47,7 @@ export type AllowedUserAccess = {
     userDetails: string;
     userId?: string;
     matchedIdentifier?: string;
+    roles: string[];
   };
 };
 
@@ -209,7 +210,7 @@ export function getAllowedUserAccess(
       allowed: true,
       status: 200,
       reason: "local-mock-bypass",
-      user: { identityProvider: "mock", userDetails: "dev@fivetwo.local", matchedIdentifier: "dev@fivetwo.local" }
+      user: { identityProvider: "mock", userDetails: "dev@fivetwo.local", matchedIdentifier: "dev@fivetwo.local", roles: ["authenticated"] }
     };
   }
 
@@ -227,16 +228,18 @@ export function getAllowedUserAccess(
   }
 
   const allowedIdentifiers = [...new Set([...parseAllowedUserUpns(env.ALLOWED_USER_UPNS), ...parseAllowedUserUpns(env.ALLOWED_USER_IDS)])];
-  if (allowedIdentifiers.length === 0) {
+  const allowedRoles = getAllowedUserRoles(env);
+  if (allowedIdentifiers.length === 0 && allowedRoles.length === 0) {
     return { authenticated: true, allowed: false, status: 500, reason: "missing-allowlist", user: toAllowedUser(principal, userDetails) };
   }
 
   const allowedIdentifier = userIdentifiers.find((identifier) => allowedIdentifiers.includes(identifier));
-  if (!allowedIdentifier) {
+  const allowedRole = getPrincipalRoles(principal).find((role) => allowedRoles.includes(role));
+  if (!allowedIdentifier && !allowedRole) {
     return { authenticated: true, allowed: false, status: 403, reason: "not-allowed", user: toAllowedUser(principal, userDetails) };
   }
 
-  return { authenticated: true, allowed: true, status: 200, user: toAllowedUser(principal, userDetails, allowedIdentifier) };
+  return { authenticated: true, allowed: true, status: 200, user: toAllowedUser(principal, userDetails, allowedIdentifier || allowedRole) };
 }
 
 export function getDashboardSession(
@@ -429,6 +432,9 @@ function getConfiguredDashboardScope(
   const mappedCustomer = getMappedCustomerForUser(getUserMappingIdentifiers(user), env);
   if (mappedCustomer) return { scope: mappedCustomer, reason: "mapped" };
 
+  const mappedRoleCustomer = getMappedCustomerForRole(user?.roles ?? [], env);
+  if (mappedRoleCustomer) return { scope: mappedRoleCustomer, reason: "mapped" };
+
   const staticScope = (env.DASHBOARD_CUSTOMER_SCOPE || env.ADO_CUSTOMER_SCOPE)?.trim();
   if (staticScope) {
     return {
@@ -460,6 +466,16 @@ function getMappedCustomerForUser(
   return { customerId: mapping.customerId, displayName: mapping.displayName, mode: "user-map" };
 }
 
+function getMappedCustomerForRole(
+  userRoles: string[],
+  env: Record<string, string | undefined> = process.env
+): DashboardScope | undefined {
+  const mapping = parseUserCustomerMap(env.CUSTOMER_ROLE_MAP).find((entry) => userRoles.includes(entry.userDetails));
+  if (!mapping) return undefined;
+
+  return { customerId: mapping.customerId, displayName: mapping.displayName, mode: "user-map" };
+}
+
 function getUserMappingIdentifiers(user: AllowedUserAccess["user"] | undefined): string[] {
   return [user?.matchedIdentifier, user?.userDetails, user?.userId].reduce<string[]>((identifiers, value) => {
     const normalized = normalizeUserIdentifier(value);
@@ -469,7 +485,7 @@ function getUserMappingIdentifiers(user: AllowedUserAccess["user"] | undefined):
 }
 
 function isUserCustomerMapConfigured(env: Record<string, string | undefined> = process.env): boolean {
-  return Boolean(env.USER_CUSTOMER_MAP?.trim());
+  return Boolean(env.USER_CUSTOMER_MAP?.trim() || env.CUSTOMER_ROLE_MAP?.trim());
 }
 
 async function getDashboardWorkItems(scope: DashboardScope): Promise<AdoWorkItem[]> {
@@ -709,6 +725,14 @@ function getPrincipalUserIdentifiers(principal: ClientPrincipal | undefined): st
   }, []);
 }
 
+function getPrincipalRoles(principal: ClientPrincipal | undefined): string[] {
+  return (principal?.userRoles ?? []).reduce<string[]>((roles, role) => {
+    const normalized = normalizeUserIdentifier(role);
+    if (normalized && normalized !== "anonymous" && !roles.includes(normalized)) roles.push(normalized);
+    return roles;
+  }, []);
+}
+
 function getPrincipalClaim(principal: ClientPrincipal, claimType: string): string | undefined {
   const claim = principal.claims?.find((claim) => (claim.typ || claim.type) === claimType);
   return claim?.val ?? claim?.value;
@@ -719,8 +743,19 @@ function toAllowedUser(principal: ClientPrincipal, userDetails: string, matchedI
     identityProvider: principal.identityProvider,
     userDetails: matchedIdentifier?.includes("@") ? matchedIdentifier : userDetails,
     userId: normalizeUserIdentifier(principal.userId),
-    matchedIdentifier
+    matchedIdentifier,
+    roles: getPrincipalRoles(principal)
   };
+}
+
+function getAllowedUserRoles(env: Record<string, string | undefined> = process.env): string[] {
+  return [
+    ...parseAllowedUserUpns(env.ALLOWED_USER_ROLES),
+    ...parseUserCustomerMap(env.CUSTOMER_ROLE_MAP).map((mapping) => mapping.userDetails)
+  ].reduce<string[]>((roles, role) => {
+    if (!roles.includes(role)) roles.push(role);
+    return roles;
+  }, []);
 }
 
 function requireEnv(name: string): string {
