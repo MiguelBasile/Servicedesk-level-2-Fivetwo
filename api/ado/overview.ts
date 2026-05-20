@@ -1,5 +1,5 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
-import { AuthError, getDashboardOverview, getMockOverview, resolveDashboardScope } from "../shared";
+import { getDashboardOverview, getMockOverview, resolveDashboardScope, toSafeApiError } from "../shared";
 
 app.http("adoOverview", {
   methods: ["GET"],
@@ -32,9 +32,6 @@ function json(body: unknown, status = 200): HttpResponseInit {
 }
 
 function errorResponse(error: unknown): HttpResponseInit {
-  if (error instanceof AuthError) {
-    return json({ error: error.message }, error.status);
-  }
-
-  return json({ error: "Unable to load Azure DevOps overview" }, 500);
+  const safeError = toSafeApiError(error, "Unable to load Azure DevOps overview");
+  return json(safeError.body, safeError.status);
 }

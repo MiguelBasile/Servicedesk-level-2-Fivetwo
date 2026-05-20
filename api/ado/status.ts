@@ -1,5 +1,5 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
-import { AuthError, getAdoConnectionStatus, resolveDashboardScope } from "../shared";
+import { getAdoConnectionStatus, resolveDashboardScope, toSafeApiError } from "../shared";
 
 app.http("adoStatus", {
   methods: ["GET"],
@@ -37,9 +37,6 @@ function json(body: unknown, status = 200): HttpResponseInit {
 }
 
 function errorResponse(error: unknown): HttpResponseInit {
-  if (error instanceof AuthError) {
-    return json({ error: error.message }, error.status);
-  }
-
-  return json({ connected: false, error: "Unable to connect to Azure DevOps" }, 500);
+  const safeError = toSafeApiError(error, "Unable to connect to Azure DevOps");
+  return json({ connected: false, ...safeError.body }, safeError.status);
 }

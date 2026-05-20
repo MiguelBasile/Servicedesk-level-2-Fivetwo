@@ -133,12 +133,26 @@ export class AuthError extends Error {
 
 export class AdoRequestError extends Error {
   status: number;
+  operation: string;
+  safeMessage: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, operation = "azure-devops", safeMessage = message) {
     super(message);
     this.status = status;
+    this.operation = operation;
+    this.safeMessage = safeMessage;
   }
 }
+
+export type SafeApiError = {
+  status: number;
+  body: {
+    error: string;
+    message?: string;
+    source?: string;
+    status?: number;
+  };
+};
 
 export function parseAllowedUserUpns(value: string | undefined): string[] {
   return (value ?? "")
@@ -298,6 +312,7 @@ export async function adoFetch(path: string, init: RequestInit = {}) {
   const org = requireEnv("ADO_ORG");
   const project = requireEnv("ADO_PROJECT");
   const authorization = await getAdoAuthorizationHeader();
+  const operation = getAdoOperation(path);
 
   const response = await fetch(`https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_apis/${path}`, {
     ...init,
@@ -309,8 +324,47 @@ export async function adoFetch(path: string, init: RequestInit = {}) {
     }
   });
 
-  if (!response.ok) throw new AdoRequestError(`ADO request failed: ${response.status}`, response.status);
+  if (!response.ok) {
+    throw new AdoRequestError(
+      `ADO ${operation} request failed: ${response.status}`,
+      response.status,
+      operation,
+      getAdoFailureMessage(response.status, operation)
+    );
+  }
+
   return response.json();
+}
+
+export function toSafeApiError(error: unknown, fallback: string): SafeApiError {
+  if (error instanceof AuthError) {
+    return { status: error.status, body: { error: error.message, message: error.message, source: "dashboard-auth", status: error.status } };
+  }
+
+  if (error instanceof AdoRequestError) {
+    return {
+      status: error.status >= 400 && error.status < 500 ? error.status : 500,
+      body: {
+        error: fallback,
+        message: error.safeMessage,
+        source: error.operation,
+        status: error.status
+      }
+    };
+  }
+
+  if (error instanceof Error && error.message.endsWith("is not configured")) {
+    return {
+      status: 500,
+      body: {
+        error: fallback,
+        message: error.message,
+        source: "configuration"
+      }
+    };
+  }
+
+  return { status: 500, body: { error: fallback, message: fallback } };
 }
 
 export function toDashboardOverview(
@@ -689,7 +743,12 @@ async function getAdoEntraAccessToken(): Promise<string> {
   });
 
   if (!response.ok) {
-    throw new AdoRequestError(`ADO Entra token request failed: ${response.status}`, response.status);
+    throw new AdoRequestError(
+      `ADO Entra token request failed: ${response.status}`,
+      response.status,
+      "entra-token",
+      getAdoTokenFailureMessage(response.status)
+    );
   }
 
   const token = (await response.json()) as {
@@ -717,6 +776,45 @@ function getConfiguredWorkItemTypes(): string[] {
 
 function getCustomerField(): string {
   return process.env.ADO_CUSTOMER_FIELD || "Custom.Customer";
+}
+
+function getAdoOperation(path: string): string {
+  if (path.startsWith("wit/wiql")) return "wiql";
+  if (path.startsWith("wit/workitems")) return "work-item-read";
+  if (path.startsWith("wit/fields")) return "field-list";
+  return "azure-devops";
+}
+
+function getAdoFailureMessage(status: number, operation: string): string {
+  if (status === 400 && operation === "wiql") {
+    return "Azure DevOps rejected the dashboard WIQL query. Check ADO_CUSTOMER_FIELD, ADO_WORK_ITEM_TYPES, and the exact customer value in USER_CUSTOMER_MAP.";
+  }
+
+  if (status === 400 && operation === "work-item-read") {
+    return "Azure DevOps rejected the work item field read. Check that the configured customer and SLA field names exist in this project.";
+  }
+
+  if (status === 401) {
+    return "Azure DevOps rejected the Entra access token. Check that the service principal is added to the Azure DevOps organization.";
+  }
+
+  if (status === 403) {
+    return "Azure DevOps accepted the identity but denied access. Give the service principal project and work item read permissions, and use Basic access if Stakeholder is too limited.";
+  }
+
+  if (status === 404) {
+    return "Azure DevOps returned 404. Check that ADO_ORG is only the organization name and ADO_PROJECT exactly matches the project name.";
+  }
+
+  return `Azure DevOps ${operation} request failed with status ${status}.`;
+}
+
+function getAdoTokenFailureMessage(status: number): string {
+  if (status === 400 || status === 401) {
+    return "Microsoft Entra did not issue an Azure DevOps token. Check ADO_ENTRA_TENANT_ID, ADO_ENTRA_CLIENT_ID, ADO_ENTRA_CLIENT_SECRET, and ADO_ENTRA_SCOPE.";
+  }
+
+  return `Microsoft Entra token request failed with status ${status}.`;
 }
 
 function getMonthStartIso(now: Date = new Date()): string {
