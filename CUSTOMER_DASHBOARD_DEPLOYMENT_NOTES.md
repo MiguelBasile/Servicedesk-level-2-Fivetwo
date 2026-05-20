@@ -49,6 +49,7 @@ These are the production lessons from the earlier customer dashboard that were r
 ## App-Managed Authorization
 
 - Use `ALLOWED_USER_UPNS` for dashboard allowlisting.
+- If Static Web Apps returns masked `userDetails` such as `mig*****`, put the SWA `userId` shown on the unauthorized screen in `ALLOWED_USER_IDS`.
 - Functions parse the SWA-provided `x-ms-client-principal` header.
 - Function responses should distinguish:
   - `401`: no signed-in SWA principal
@@ -58,6 +59,7 @@ These are the production lessons from the earlier customer dashboard that were r
 ## Customer Scope Mapping
 
 - Use `USER_CUSTOMER_MAP` to map signed-in UPNs to ADO customer scopes.
+- The left side of `USER_CUSTOMER_MAP` can be a UPN/email or an SWA `userId`.
 - The mapped value must exactly match the ADO customer field value.
 - For this environment the known value is `FiveTwo Internal`.
 - The old pasted customer-token flow should not be used for production.

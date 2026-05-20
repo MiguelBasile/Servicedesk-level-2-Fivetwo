@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { getAllowedUserAccess, getDashboardSession, parseUserCustomerMap, toDashboardOverview, type AdoWorkItem } from "./shared";
 
-function principalHeader(userDetails: string) {
+function principalHeader(userDetails: string, userId = "user-1") {
   const payload = Buffer.from(
     JSON.stringify({
       identityProvider: "aad",
-      userId: "user-1",
+      userId,
       userDetails
     })
   ).toString("base64");
@@ -68,6 +68,19 @@ describe("dashboard auth", () => {
     });
 
     expect(session.allowed).toBe(true);
+    expect(session.scopeConfigured).toBe(true);
+    expect(session.scope?.displayName).toBe("FiveTwo Internal");
+  });
+
+  it("allows and maps users by Static Web Apps user ID when user details are masked", () => {
+    const session = getDashboardSession(principalHeader("mig*****", "swa-user-123"), {
+      ALLOWED_USER_IDS: "swa-user-123",
+      USER_CUSTOMER_MAP: "swa-user-123=FiveTwo Internal"
+    });
+
+    expect(session.allowed).toBe(true);
+    expect(session.user?.userDetails).toBe("mig*****");
+    expect(session.user?.userId).toBe("swa-user-123");
     expect(session.scopeConfigured).toBe(true);
     expect(session.scope?.displayName).toBe("FiveTwo Internal");
   });

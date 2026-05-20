@@ -51,6 +51,8 @@ type SessionPayload = {
   user?: {
     userDetails: string;
     identityProvider?: string;
+    userId?: string;
+    matchedIdentifier?: string;
   };
   scope?: {
     displayName: string;
@@ -365,7 +367,7 @@ function AccessBanner({
     },
     unauthorized: {
       title: "Access not authorized",
-      body: `${session?.user?.userDetails || "This account"} is not allowlisted for this dashboard.`
+      body: getUnauthorizedMessage(session)
     },
     unconfigured: {
       title: "Dashboard scope not configured",
@@ -392,6 +394,14 @@ function AccessBanner({
       ) : null}
     </section>
   );
+}
+
+function getUnauthorizedMessage(session: SessionPayload | undefined) {
+  const userDetails = session?.user?.userDetails || "This account";
+  const userId = session?.user?.userId;
+  const userIdMessage = userId ? ` SWA user ID: ${userId}.` : "";
+
+  return `${userDetails} is not allowlisted for this dashboard.${userIdMessage}`;
 }
 
 function ConnectionBanner({ message }: { message?: string }) {

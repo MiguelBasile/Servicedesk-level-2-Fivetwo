@@ -46,6 +46,7 @@ export type AllowedUserAccess = {
     identityProvider?: string;
     userDetails: string;
     userId?: string;
+    matchedIdentifier?: string;
   };
 };
 
@@ -208,13 +209,14 @@ export function getAllowedUserAccess(
       allowed: true,
       status: 200,
       reason: "local-mock-bypass",
-      user: { identityProvider: "mock", userDetails: "dev@fivetwo.local" }
+      user: { identityProvider: "mock", userDetails: "dev@fivetwo.local", matchedIdentifier: "dev@fivetwo.local" }
     };
   }
 
   const principal = parseSwaClientPrincipal(headers);
+  const principalUserDetails = normalizeUserIdentifier(principal?.userDetails);
   const userIdentifiers = getPrincipalUserIdentifiers(principal);
-  const userDetails = userIdentifiers[0];
+  const userDetails = principalUserDetails || userIdentifiers[0];
 
   if (!principal) {
     return { authenticated: false, allowed: false, status: 401, reason: "missing-principal" };
@@ -224,17 +226,17 @@ export function getAllowedUserAccess(
     return { authenticated: true, allowed: false, status: 403, reason: "missing-user-details" };
   }
 
-  const allowedUpns = parseAllowedUserUpns(env.ALLOWED_USER_UPNS);
-  if (allowedUpns.length === 0) {
+  const allowedIdentifiers = [...new Set([...parseAllowedUserUpns(env.ALLOWED_USER_UPNS), ...parseAllowedUserUpns(env.ALLOWED_USER_IDS)])];
+  if (allowedIdentifiers.length === 0) {
     return { authenticated: true, allowed: false, status: 500, reason: "missing-allowlist", user: toAllowedUser(principal, userDetails) };
   }
 
-  const allowedIdentifier = userIdentifiers.find((identifier) => allowedUpns.includes(identifier));
+  const allowedIdentifier = userIdentifiers.find((identifier) => allowedIdentifiers.includes(identifier));
   if (!allowedIdentifier) {
     return { authenticated: true, allowed: false, status: 403, reason: "not-allowed", user: toAllowedUser(principal, userDetails) };
   }
 
-  return { authenticated: true, allowed: true, status: 200, user: toAllowedUser(principal, allowedIdentifier) };
+  return { authenticated: true, allowed: true, status: 200, user: toAllowedUser(principal, userDetails, allowedIdentifier) };
 }
 
 export function getDashboardSession(
@@ -253,7 +255,7 @@ export function getDashboardSession(
     };
   }
 
-  const scope = getConfiguredDashboardScope(access.user?.userDetails, env);
+  const scope = getConfiguredDashboardScope(access.user, env);
   return {
     authenticated: true,
     allowed: true,
@@ -282,7 +284,7 @@ export function resolveDashboardScope(
   env: Record<string, string | undefined> = process.env
 ): DashboardScope {
   const user = verifyAllowedDashboardUser(headers, env);
-  const configured = getConfiguredDashboardScope(user?.userDetails, env);
+  const configured = getConfiguredDashboardScope(user, env);
 
   if (configured.scope) return configured.scope;
   if (configured.reason === "unmapped") throw new AuthError("Dashboard scope is not configured for this account", 403);
@@ -416,7 +418,7 @@ export function toDashboardOverview(
 }
 
 function getConfiguredDashboardScope(
-  userDetails: string | undefined,
+  user: AllowedUserAccess["user"] | undefined,
   env: Record<string, string | undefined>
 ): { scope?: DashboardScope; reason: DashboardSession["scopeReason"] } {
   if (env.MOCK_MODE === "true" && env.NODE_ENV !== "production") {
@@ -424,7 +426,7 @@ function getConfiguredDashboardScope(
     return { scope: { customerId: mockCustomer, displayName: mockCustomer, mode: "mock" }, reason: "static" };
   }
 
-  const mappedCustomer = getMappedCustomerForUser(userDetails, env);
+  const mappedCustomer = getMappedCustomerForUser(getUserMappingIdentifiers(user), env);
   if (mappedCustomer) return { scope: mappedCustomer, reason: "mapped" };
 
   const staticScope = (env.DASHBOARD_CUSTOMER_SCOPE || env.ADO_CUSTOMER_SCOPE)?.trim();
@@ -449,16 +451,21 @@ function getConfiguredDashboardScope(
 }
 
 function getMappedCustomerForUser(
-  userDetails: string | undefined,
+  userIdentifiers: string[],
   env: Record<string, string | undefined> = process.env
 ): DashboardScope | undefined {
-  const normalizedUser = normalizeUserIdentifier(userDetails);
-  if (!normalizedUser) return undefined;
-
-  const mapping = parseUserCustomerMap(env.USER_CUSTOMER_MAP).find((entry) => entry.userDetails === normalizedUser);
+  const mapping = parseUserCustomerMap(env.USER_CUSTOMER_MAP).find((entry) => userIdentifiers.includes(entry.userDetails));
   if (!mapping) return undefined;
 
   return { customerId: mapping.customerId, displayName: mapping.displayName, mode: "user-map" };
+}
+
+function getUserMappingIdentifiers(user: AllowedUserAccess["user"] | undefined): string[] {
+  return [user?.matchedIdentifier, user?.userDetails, user?.userId].reduce<string[]>((identifiers, value) => {
+    const normalized = normalizeUserIdentifier(value);
+    if (normalized && !identifiers.includes(normalized)) identifiers.push(normalized);
+    return identifiers;
+  }, []);
 }
 
 function isUserCustomerMapConfigured(env: Record<string, string | undefined> = process.env): boolean {
@@ -690,6 +697,7 @@ function getPrincipalUserIdentifiers(principal: ClientPrincipal | undefined): st
 
   return [
     principal.userDetails,
+    principal.userId,
     getPrincipalClaim(principal, "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"),
     getPrincipalClaim(principal, "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn"),
     getPrincipalClaim(principal, "preferred_username"),
@@ -706,11 +714,12 @@ function getPrincipalClaim(principal: ClientPrincipal, claimType: string): strin
   return claim?.val ?? claim?.value;
 }
 
-function toAllowedUser(principal: ClientPrincipal, userDetails: string): AllowedUserAccess["user"] {
+function toAllowedUser(principal: ClientPrincipal, userDetails: string, matchedIdentifier?: string): AllowedUserAccess["user"] {
   return {
     identityProvider: principal.identityProvider,
-    userDetails,
-    userId: principal.userId
+    userDetails: matchedIdentifier?.includes("@") ? matchedIdentifier : userDetails,
+    userId: normalizeUserIdentifier(principal.userId),
+    matchedIdentifier
   };
 }
 
