@@ -9,16 +9,29 @@ on:
     branches:
       - main
 
+env:
+  NODE_VERSION: "22"
+
 jobs:
   build_and_deploy_job:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
     name: Build and Deploy Job
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
           lfs: false
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Confirm Node.js build runtime
+        run: node --version
+
       - name: Build And Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
@@ -29,9 +42,14 @@ jobs:
           ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
           # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
           app_location: "/" # App source code path
-          api_location: "" # Api source code path - optional
-          output_location: "" # Built app content directory - optional
+          api_location: "api" # Api source code path - optional
+          output_location: "out" # Built app content directory - optional
+          app_build_command: "npm run build"
+          api_build_command: "npm run build"
           ###### End of Repository/Build Configurations ######
+        env:
+          NEXT_PUBLIC_MOCK_MODE: "false"
+          NODE_VERSION: ${{ env.NODE_VERSION }}
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'

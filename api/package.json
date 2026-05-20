@@ -1,0 +1,20 @@
+{
+  "name": "servicedesk-level-2-fivetwo-api",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/**/*.js",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "prebuild": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.7.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^5.7.3"
+  }
+}

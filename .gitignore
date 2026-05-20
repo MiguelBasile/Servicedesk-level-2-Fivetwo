@@ -1,0 +1,13 @@
+.next
+out
+node_modules
+.npm-cache
+api/dist
+api/node_modules
+*.local
+*.log
+.env
+.env.local
+local.settings.json
+test-results
+playwright-report
