@@ -193,7 +193,8 @@ export function getAllowedUserAccess(
   }
 
   const principal = parseSwaClientPrincipal(headers);
-  const userDetails = normalizeUserIdentifier(getPrincipalUserDetails(principal));
+  const userIdentifiers = getPrincipalUserIdentifiers(principal);
+  const userDetails = userIdentifiers[0];
 
   if (!principal) {
     return { authenticated: false, allowed: false, status: 401, reason: "missing-principal" };
@@ -208,11 +209,12 @@ export function getAllowedUserAccess(
     return { authenticated: true, allowed: false, status: 500, reason: "missing-allowlist", user: toAllowedUser(principal, userDetails) };
   }
 
-  if (!allowedUpns.includes(userDetails)) {
+  const allowedIdentifier = userIdentifiers.find((identifier) => allowedUpns.includes(identifier));
+  if (!allowedIdentifier) {
     return { authenticated: true, allowed: false, status: 403, reason: "not-allowed", user: toAllowedUser(principal, userDetails) };
   }
 
-  return { authenticated: true, allowed: true, status: 200, user: toAllowedUser(principal, userDetails) };
+  return { authenticated: true, allowed: true, status: 200, user: toAllowedUser(principal, allowedIdentifier) };
 }
 
 export function getDashboardSession(
@@ -608,16 +610,20 @@ function normalizeUserIdentifier(value: unknown): string | undefined {
   return normalized || undefined;
 }
 
-function getPrincipalUserDetails(principal: ClientPrincipal | undefined): string | undefined {
-  if (!principal) return undefined;
+function getPrincipalUserIdentifiers(principal: ClientPrincipal | undefined): string[] {
+  if (!principal) return [];
 
-  return (
-    principal.userDetails ||
-    getPrincipalClaim(principal, "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress") ||
-    getPrincipalClaim(principal, "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn") ||
-    getPrincipalClaim(principal, "preferred_username") ||
+  return [
+    principal.userDetails,
+    getPrincipalClaim(principal, "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"),
+    getPrincipalClaim(principal, "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn"),
+    getPrincipalClaim(principal, "preferred_username"),
     getPrincipalClaim(principal, "upn")
-  );
+  ].reduce<string[]>((identifiers, value) => {
+    const normalized = normalizeUserIdentifier(value);
+    if (normalized && !identifiers.includes(normalized)) identifiers.push(normalized);
+    return identifiers;
+  }, []);
 }
 
 function getPrincipalClaim(principal: ClientPrincipal, claimType: string): string | undefined {

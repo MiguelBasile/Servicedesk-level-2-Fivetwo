@@ -13,6 +13,19 @@ function principalHeader(userDetails: string) {
   return new Headers({ "x-ms-client-principal": payload });
 }
 
+function principalHeaderWithClaims(userDetails: string, claims: Array<{ typ: string; val: string }>) {
+  const payload = Buffer.from(
+    JSON.stringify({
+      identityProvider: "aad",
+      userId: "user-1",
+      userDetails,
+      claims
+    })
+  ).toString("base64");
+
+  return new Headers({ "x-ms-client-principal": payload });
+}
+
 describe("dashboard auth", () => {
   it("allowlists signed-in Static Web Apps users case-insensitively", () => {
     const access = getAllowedUserAccess(principalHeader("Miguel.Basile@FiveTwo.nz"), {
@@ -29,6 +42,23 @@ describe("dashboard auth", () => {
     expect(access.allowed).toBe(false);
     expect(access.status).toBe(500);
     expect(access.reason).toBe("missing-allowlist");
+  });
+
+  it("allows users by email claims when SWA userDetails is not the UPN", () => {
+    const access = getAllowedUserAccess(
+      principalHeaderWithClaims("Miguel Basile", [
+        {
+          typ: "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+          val: "miguel.basile@fivetwo.nz"
+        }
+      ]),
+      {
+        ALLOWED_USER_UPNS: "miguel.basile@fivetwo.nz"
+      }
+    );
+
+    expect(access.allowed).toBe(true);
+    expect(access.user?.userDetails).toBe("miguel.basile@fivetwo.nz");
   });
 
   it("resolves mapped customer scopes from allowed users", () => {
