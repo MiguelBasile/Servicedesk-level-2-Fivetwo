@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 type Severity = "low" | "medium" | "high" | "critical";
 type WatchStatus = "at-risk" | "breached";
 type DashboardState = "normal" | "sla" | "major";
-type SessionStatus = "checking" | "ready" | "signin" | "unauthorized" | "unconfigured" | "local";
+type SessionStatus = "checking" | "ready" | "signin" | "unauthorized" | "unconfigured" | "api-error";
 
 type Metrics = {
   majorIncidentsOpen: number;
@@ -59,187 +59,28 @@ type SessionPayload = {
   scopeConfigured?: boolean;
 };
 
-const snapshots: Record<string, Overview> = {
-  steady: {
-    metrics: {
-      majorIncidentsOpen: 0,
-      breachedSla: 0,
-      atRiskSla: 1,
-      p1Open: 0,
-      totalOpen: 14,
-      unassigned: 2,
-      blockedOpen: 1,
-      closedThisMonth: 47
-    },
-    incidents: [
-      {
-        severity: "medium",
-        title: "VPN capacity warning",
-        state: "Investigating",
-        assignee: "Platform Support",
-        customer: "FiveTwo Internal",
-        updateInterval: "Next update 30m"
-      },
-      {
-        severity: "low",
-        title: "Printer queue delay",
-        state: "Waiting on Customer",
-        assignee: "Facilities",
-        customer: "FiveTwo Internal",
-        updateInterval: "Customer pending"
-      },
-      {
-        severity: "low",
-        title: "Laptop build request queue",
-        state: "In Progress",
-        assignee: "Service Desk",
-        customer: "FiveTwo Internal",
-        updateInterval: "Today"
-      }
-    ],
-    slaWatch: [
-      {
-        status: "at-risk",
-        title: "Backup verification for internal servers",
-        assignee: "Support Team",
-        remaining: "42m left"
-      }
-    ],
-    scope: { displayName: "FiveTwo Internal", mode: "demo" }
+const emptyOverview: Overview = {
+  metrics: {
+    majorIncidentsOpen: 0,
+    breachedSla: 0,
+    atRiskSla: 0,
+    p1Open: 0,
+    totalOpen: 0,
+    unassigned: 0,
+    blockedOpen: 0,
+    closedThisMonth: 0
   },
-  sla: {
-    metrics: {
-      majorIncidentsOpen: 0,
-      breachedSla: 2,
-      atRiskSla: 3,
-      p1Open: 1,
-      totalOpen: 22,
-      unassigned: 4,
-      blockedOpen: 2,
-      closedThisMonth: 49
-    },
-    incidents: [
-      {
-        severity: "high",
-        title: "Finance app authentication failures",
-        state: "Investigating",
-        assignee: "Identity Team",
-        customer: "FiveTwo Internal",
-        updateInterval: "SLA breached"
-      },
-      {
-        severity: "high",
-        title: "Service desk P2 response overdue",
-        state: "New",
-        assignee: "Unassigned",
-        customer: "FiveTwo Internal",
-        updateInterval: "Owner required"
-      },
-      {
-        severity: "medium",
-        title: "VPN connectivity issues for remote staff",
-        state: "Investigating",
-        assignee: "Network Team",
-        customer: "FiveTwo Internal",
-        updateInterval: "Next update 20m"
-      }
-    ],
-    slaWatch: [
-      {
-        status: "breached",
-        title: "Finance app authentication failures",
-        assignee: "Identity Team",
-        remaining: "18m overdue"
-      },
-      {
-        status: "breached",
-        title: "Service desk P2 response overdue",
-        assignee: "Unassigned",
-        remaining: "12m overdue"
-      },
-      {
-        status: "at-risk",
-        title: "VPN connectivity issues for remote staff",
-        assignee: "Network Team",
-        remaining: "24m left"
-      }
-    ],
-    scope: { displayName: "FiveTwo Internal", mode: "demo" }
-  },
-  major: {
-    metrics: {
-      majorIncidentsOpen: 1,
-      breachedSla: 4,
-      atRiskSla: 2,
-      p1Open: 3,
-      totalOpen: 31,
-      unassigned: 5,
-      blockedOpen: 4,
-      closedThisMonth: 50
-    },
-    incidents: [
-      {
-        severity: "critical",
-        title: "Core ERP system unavailable across all sites",
-        state: "Major Incident Declared",
-        assignee: "Support Lead",
-        customer: "FiveTwo Internal",
-        updateInterval: "Updates every 30m"
-      },
-      {
-        severity: "high",
-        title: "Customer portal degraded",
-        state: "Investigating",
-        assignee: "Platform Support",
-        customer: "FiveTwo Internal",
-        updateInterval: "Bridge active"
-      },
-      {
-        severity: "high",
-        title: "Service desk P2 response overdue",
-        state: "New",
-        assignee: "Unassigned",
-        customer: "FiveTwo Internal",
-        updateInterval: "Escalated"
-      }
-    ],
-    slaWatch: [
-      {
-        status: "breached",
-        title: "Core ERP system unavailable across all sites",
-        assignee: "Support Lead",
-        remaining: "Major incident active"
-      },
-      {
-        status: "breached",
-        title: "Customer portal degraded",
-        assignee: "Platform Support",
-        remaining: "31m overdue"
-      },
-      {
-        status: "at-risk",
-        title: "Network outage follow-up tasks",
-        assignee: "Network Team",
-        remaining: "19m left"
-      }
-    ],
-    scope: { displayName: "FiveTwo Internal", mode: "demo" }
-  }
+  incidents: [],
+  slaWatch: []
 };
-
-const snapshotLabels = [
-  ["steady", "Steady State"],
-  ["sla", "SLA Breach"],
-  ["major", "Major Incident"]
-] as const;
 
 export default function DashboardPage() {
   const [timeLabel, setTimeLabel] = useState("--:--");
   const [dateLabel, setDateLabel] = useState("--");
   const [lastUpdated, setLastUpdated] = useState("Live");
-  const [overview, setOverview] = useState<Overview>(snapshots.steady);
-  const [activeSnapshot, setActiveSnapshot] = useState<string | undefined>("steady");
-  const [dataSource, setDataSource] = useState("Demo data");
+  const [overview, setOverview] = useState<Overview>(emptyOverview);
+  const [dataSource, setDataSource] = useState("Checking live data");
+  const [connectionMessage, setConnectionMessage] = useState<string | undefined>();
   const [sessionStatus, setSessionStatus] = useState<SessionStatus>("checking");
   const [session, setSession] = useState<SessionPayload | undefined>();
 
@@ -252,15 +93,23 @@ export default function DashboardPage() {
       const payload = (await response.json()) as Partial<Overview> & { error?: string; message?: string };
 
       if (!response.ok || !payload.metrics || !payload.incidents || !payload.slaWatch) {
-        setDataSource(payload.message || payload.error ? `Demo data - ${payload.message || payload.error}` : "Demo data");
+        const message = payload.message || payload.error || "Azure DevOps overview did not return live dashboard data.";
+        setOverview(emptyOverview);
+        setDataSource("Connection issue");
+        setConnectionMessage(message);
         return;
       }
 
+      const isMockData = payload.scope?.mode === "mock";
       setOverview(payload as Overview);
-      setDataSource("Azure DevOps live");
-      setActiveSnapshot(undefined);
+      setDataSource(isMockData ? "Mock data" : "Azure DevOps live");
+      setConnectionMessage(
+        isMockData ? "MOCK_MODE is enabled in this deployment. Set MOCK_MODE=false to load Azure DevOps data." : undefined
+      );
     } catch {
-      setDataSource("Demo data - API unavailable");
+      setOverview(emptyOverview);
+      setDataSource("Connection issue");
+      setConnectionMessage("The dashboard API could not be reached.");
     }
   }, []);
 
@@ -301,7 +150,11 @@ export default function DashboardPage() {
       try {
         const response = await fetch("/api/session", { cache: "no-store" });
         if (response.status === 404) {
-          if (!cancelled) setSessionStatus("local");
+          if (!cancelled) {
+            setSessionStatus("api-error");
+            setDataSource("Connection issue");
+            setConnectionMessage("The /api/session function is not available in this deployment.");
+          }
           return;
         }
 
@@ -327,7 +180,11 @@ export default function DashboardPage() {
         setSessionStatus("ready");
         await loadOverview();
       } catch {
-        if (!cancelled) setSessionStatus("local");
+        if (!cancelled) {
+          setSessionStatus("api-error");
+          setDataSource("Connection issue");
+          setConnectionMessage("The Static Web Apps API could not be reached from the dashboard.");
+        }
       }
     }
 
@@ -344,13 +201,7 @@ export default function DashboardPage() {
   }, [loadOverview, sessionStatus]);
 
   const summaryRows = useMemo(() => buildSummaryRows(overview.metrics), [overview.metrics]);
-  const scopeLabel = session?.scope?.displayName || overview.scope?.displayName || "FiveTwo Internal";
-
-  function setSnapshot(snapshotName: string) {
-    setOverview(snapshots[snapshotName] ?? snapshots.steady);
-    setActiveSnapshot(snapshotName);
-    setDataSource("Demo data");
-  }
+  const scopeLabel = session?.scope?.displayName || overview.scope?.displayName || "Not connected";
 
   return (
     <main className={`dashboard state-${dashboardState}`}>
@@ -371,6 +222,7 @@ export default function DashboardPage() {
       </header>
 
       <AccessBanner sessionStatus={sessionStatus} session={session} />
+      <ConnectionBanner message={connectionMessage} />
 
       <section className="status-banner" aria-live="polite">
         <div>
@@ -383,19 +235,6 @@ export default function DashboardPage() {
           <span>{dataSource}</span>
           <span>Scope: {scopeLabel}</span>
         </div>
-      </section>
-
-      <section className="control-strip" aria-label="Dashboard state controls">
-        {snapshotLabels.map(([snapshotName, label]) => (
-          <button
-            className={`state-button ${activeSnapshot === snapshotName ? "is-active" : ""}`}
-            key={snapshotName}
-            type="button"
-            onClick={() => setSnapshot(snapshotName)}
-          >
-            {label}
-          </button>
-        ))}
       </section>
 
       <section className="metric-grid" aria-label="Key metrics">
@@ -512,9 +351,9 @@ function AccessBanner({
   sessionStatus: SessionStatus;
   session: SessionPayload | undefined;
 }) {
-  if (sessionStatus === "ready" || sessionStatus === "local") return null;
+  if (sessionStatus === "ready") return null;
 
-  const copy: Record<Exclude<SessionStatus, "ready" | "local">, { title: string; body: string; action?: string }> = {
+  const copy: Record<Exclude<SessionStatus, "ready">, { title: string; body: string; action?: string }> = {
     checking: {
       title: "Checking access",
       body: "Validating your Static Web Apps sign-in and dashboard scope."
@@ -531,6 +370,10 @@ function AccessBanner({
     unconfigured: {
       title: "Dashboard scope not configured",
       body: "Your account is allowlisted, but no customer scope is mapped."
+    },
+    "api-error": {
+      title: "Dashboard API unavailable",
+      body: "The static site loaded, but the Azure Functions API is not responding for this deployment."
     }
   };
   const selected = copy[sessionStatus];
@@ -547,6 +390,20 @@ function AccessBanner({
           {selected.action}
         </a>
       ) : null}
+    </section>
+  );
+}
+
+function ConnectionBanner({ message }: { message?: string }) {
+  if (!message) return null;
+
+  return (
+    <section className="access-banner access-unconfigured" aria-live="polite">
+      <div>
+        <p className="eyebrow">Connection</p>
+        <h2>Live data unavailable</h2>
+        <p>{message}</p>
+      </div>
     </section>
   );
 }

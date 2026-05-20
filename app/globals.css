@@ -46,7 +46,6 @@ a {
 .topbar,
 .access-banner,
 .status-banner,
-.control-strip,
 .metric-grid,
 .content-grid {
   max-width: 1760px;
@@ -213,35 +212,6 @@ h1 {
   font-size: 1.12rem;
   font-weight: 900;
   text-align: center;
-}
-
-.control-strip {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 18px;
-}
-
-.state-button {
-  min-height: 46px;
-  padding: 0 18px;
-  background: rgba(255, 255, 255, 0.07);
-  color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 850;
-}
-
-.state-button:hover,
-.state-button:focus-visible {
-  border-color: rgba(65, 214, 189, 0.72);
-  outline: 3px solid rgba(65, 214, 189, 0.18);
-}
-
-.state-button.is-active {
-  background: var(--accent);
-  color: #07110f;
-  border-color: var(--accent);
 }
 
 .metric-grid {
@@ -551,10 +521,6 @@ h1 {
     min-width: 0;
     text-align: left;
     justify-items: start;
-  }
-
-  .control-strip {
-    flex-wrap: wrap;
   }
 
   .metric-grid,
